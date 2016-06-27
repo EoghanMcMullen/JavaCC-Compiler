@@ -1,0 +1,253 @@
+options 
+{
+	IGNORE_CASE = true;
+	JAVA_UNICODE_ESCAPE = true;
+	MULTI = true;
+	NODE_DEFAULT_VOID = true;
+	VISITOR = true;
+}
+PARSER_BEGIN (basicL)
+	
+import java.io.*;
+import java.util.*;
+
+class basicL
+{
+	public static void main(String[] args) throws ParseException, FileNotFoundException
+	{
+
+			basicL parser = new basicL(System.in);
+            SimpleNode program = parser.program();
+			
+			System.out.println("------------------AST----------------------");
+
+			program.dump(" ");
+			System.out.println();
+			
+			System.out.println();
+			
+			BasicLSemanticVisitor visitor = new BasicLSemanticVisitor();
+			program.jjtAccept(visitor, null);
+    }
+}
+PARSER_END (basicL)
+
+TOKEN_MGR_DECLS :
+{
+  static int commentNesting = 0;
+}
+
+SKIP : 
+{ 						
+	  " "
+	| "\t"
+	| "\r"
+	| "\n"
+	| "\f"
+}
+
+SKIP : 
+{  						
+	< "--" (~["\r", "\n"]) *>
+	|"/*" { commentNesting++; } : IN_COMMENT
+}
+
+<IN_COMMENT> SKIP : 
+{			
+	"/*" { commentNesting++; }
+	| "*/" { commentNesting--;
+	if (commentNesting == 0)
+		SwitchTo(DEFAULT);
+		}
+	| <~[]>
+}
+
+TOKEN : 
+{						
+	 < PLUS : "+" >
+	| < MINUS : "-" >
+	| < MULTIPLY : "*" >
+	| < DIVIDE : "/" >
+	| < EQUALS : "=" >
+	| < NOT_EQUAL : "!=" >
+	| < LESS_THAN : "< " >
+	| < GREATER_THAN : " >" >
+	| < LESS_THAN_EQUAL : "<=" >
+	| < GREATER_THAN_EQUAL : " >=" >
+	| < LEFT_PARENTHESES : "(" >
+	| < RIGHT_PARENTHESES : ")" >
+	| < COMMA : "," >
+	| < SEMI_COLON : ";" >
+	| < COLON : ":" > 
+	| < ASSIGN : ":=" >
+}
+
+TOKEN: 
+{							
+	< AND : "and" >
+    | < BOOL : "bool" >
+	| < CONST : "const" >
+	| < DO : "do" >
+	| < ELSE : "else" >
+	| < FALSE : "false" >
+	| < IF : "if" >
+	| < INT : "int" >
+	| < MAIN : "main" >
+	| < NOT : "not" >
+	| < OR : "or" >
+	| < RETURN : "return" >
+	| < THEN : "then" >
+	| < TRUE : "true" >
+	| < VAR : "var" >
+	| < VOID : "void" >
+	| < WHILE : "while" >
+	| < BEGIN : "begin" >
+	| < END : "end" >
+}
+
+TOKEN : // Numbers 
+{
+    < NUMBER : (<DIGIT>)+ >
+    | < #DIGIT : ["0" - "9"] >
+}
+
+TOKEN : // Identifiers 
+{
+    < ID : <LETTER> (<LETTER> | <DIGIT> | "_")* >
+    | < #LETTER : ["a" - "z"] | ["A" - "Z"] >
+}
+
+//=============================================
+//=======GRAMMER===============================
+
+SimpleNode program() #Program: {} 
+{
+	(
+		(decl())*
+		(function())*
+		main_prog()
+	)<EOF>
+	{return jjtThis;}
+}
+
+void decl(): {} 
+{
+	(var_decl() | const_decl())
+}
+
+void var_decl() #VarDecl: {} 
+{
+	<VAR> ident_list()<COLON>type()(<COMMA>ident_list()<COLON>type())*<SEMI_COLON>
+}
+
+void const_decl() #const_decl: {}
+{
+	<CONST>id()<COLON>type() <EQUALS> expression()(<COMMA>id()<COLON>type() <EQUALS> expression())*<SEMI_COLON>
+}
+
+void function() #Function: {} 
+{
+	type() id() <LEFT_PARENTHESES> param_list() <RIGHT_PARENTHESES>
+	<BEGIN>
+	(decl())*
+	( statement() <SEMI_COLON> )*
+	<RETURN>(expression()|{})<SEMI_COLON>
+	<END>
+}
+
+
+void param_list() #param_list: {} 
+{
+	(id()<COLON>type()(<COMMA>id()<COLON>type())* | {})
+}
+
+void type() #Type : {}
+{
+		<INT>		{ jjtThis.value=token; }
+    | 	<BOOL> 		{ jjtThis.value=token; }
+    | 	<VOID> 		{ jjtThis.value=token; }
+}
+
+void main_prog() #main_prog: {} 
+{
+	<MAIN>
+	<BEGIN>
+	( decl() )*
+	( statement() <SEMI_COLON> )*
+	<END>
+}
+
+void statement(): {} 
+{
+	id()(<ASSIGN>expression()|<LEFT_PARENTHESES>arg_list()<RIGHT_PARENTHESES>#FunctionCall)
+	|<BEGIN>(statement()<SEMI_COLON>)*<END>
+	|<IF>condition()<THEN>statement()<SEMI_COLON><ELSE>statement()
+	|<WHILE>condition()<DO>statement()
+	|{}
+}
+
+void expression(): {} 
+{ 
+	id()(<LEFT_PARENTHESES>arg_list()<RIGHT_PARENTHESES>|(mathematical_symbols()))
+	|	fragment() mathematical_symbols()
+}
+
+void arg_list() :{} 
+{
+	(id()(<COMMA>id())* | {})
+}
+
+void fragment(): {} 
+{
+		number()
+	|	<TRUE> 
+	| 	<FALSE> 
+	|	<PLUS>|<MINUS>fragment()
+ 	|	<LEFT_PARENTHESES>expression()<RIGHT_PARENTHESES>
+}
+
+void condition() #Condition: {} 
+{
+	<NOT>condition()
+	|LOOKAHEAD(2)<LEFT_PARENTHESES> condition() <RIGHT_PARENTHESES> booleanOperators()
+	|expression() booleanOperators()
+}
+
+void ident_list() #IdList: {} 
+{
+	id()(<COMMA>id())*
+}
+
+
+void mathematical_symbols(): {} 
+{
+	<PLUS> expression() 
+	|<MINUS> expression()
+	|<MULTIPLY> expression() 
+	|<DIVIDE> expression() 
+	|{}
+}
+
+void booleanOperators() : {} 
+{
+	<EQUALS> condition()
+	|<NOT> condition()
+	|<NOT_EQUAL> condition()
+	|<GREATER_THAN> condition()
+	|<GREATER_THAN_EQUAL> condition()
+	|<LESS_THAN_EQUAL> condition()
+	|<LESS_THAN> condition()
+	|<AND> condition()
+	|<OR> condition()
+	|{}
+}
+
+void number() #Number: {} 
+{
+	<NUMBER> { jjtThis.value = token; }
+}
+
+void id() #Id: { Token token; } 
+{
+	token = <ID> { jjtThis.value = token; }
+}
